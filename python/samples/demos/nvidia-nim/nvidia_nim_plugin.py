@@ -34,7 +34,7 @@ class NLlama3Plugin:
             {"content": prompt, "role": "user"}
         ]        
         response = client.chat.completions.create(
-            model="meta/llama-3.1-8b-instruct",
+            model="meta/llama3-8b-instruct",
             messages=messages,
             max_tokens=64,
             stream=False
