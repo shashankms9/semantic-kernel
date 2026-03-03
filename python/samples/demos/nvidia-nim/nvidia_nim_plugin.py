@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 import asyncio
+import os
 from typing import Annotated
 
 from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
@@ -10,16 +11,16 @@ from semantic_kernel.connectors.ai.open_ai.prompt_execution_settings.open_ai_pro
 )
 from semantic_kernel.contents.chat_history import ChatHistory
 from semantic_kernel.contents.function_call_content import FunctionCallContent
-from semantic_kernel.core_plugins.time_plugin import TimePlugin
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.functions.kernel_function_decorator import kernel_function
 from semantic_kernel.kernel import Kernel
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 # 
 # Please Replace the url with the real NIM endpoint.
 #
-nim_url = "<nim_endpoint_url>/v1"
+nim_url = os.getenv("NIM_BASE_URL", "http://localhost:8000/v1")
+nim_api_key = os.getenv("NIM_API_KEY", "<replace_with_NIM_API_key>")
 
 class NLlama3Plugin:
     """A sample plugin that provides response from NIM."""
@@ -29,7 +30,7 @@ class NLlama3Plugin:
        
         prompt = question.replace("nllama3", "you")
         
-        client = OpenAI(base_url=nim_url, api_key="<nim_api_key>")
+        client = OpenAI(base_url=nim_url, api_key=nim_api_key or "nim-local")
         messages = [
             {"content": prompt, "role": "user"}
         ]        
@@ -40,26 +41,37 @@ class NLlama3Plugin:
             stream=False
         )
         completion = response.choices[0].message
-        return completion
+        return completion.content or ""
 
 
 async def main():
     kernel = Kernel()
 
-    use_azure_openai = True
+    use_azure_openai = os.getenv("USE_AZURE_OPENAI", "false").strip().lower() in {"1", "true", "yes"}
     service_id = "function_calling"
     if use_azure_openai:
         # Please make sure your AzureOpenAI Deployment allows for function calling
+        azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        azure_deployment = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME")
+        azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        if not azure_endpoint or not azure_deployment or not azure_api_key:
+            raise ValueError(
+                "Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_CHAT_DEPLOYMENT_NAME, and AZURE_OPENAI_API_KEY "
+                "or set USE_AZURE_OPENAI=false to use OpenAI."
+            )
         ai_service = AzureChatCompletion(
             service_id=service_id,
-            endpoint='<OpenAI_endpoint>',
-            deployment_name='<OpenAI_deployment_name>',
-            api_key='<OpenAI_api_key>'
+            endpoint=azure_endpoint,
+            deployment_name=azure_deployment,
+            api_key=azure_api_key,
         )
     else:
+        nim_async_client = AsyncOpenAI(base_url=nim_url, api_key=nim_api_key or "nim-local")
         ai_service = OpenAIChatCompletion(
             service_id=service_id,
-            ai_model_id="gpt-3.5-turbo-1106",
+            ai_model_id=os.getenv("OPENAI_CHAT_MODEL_ID", "meta/llama3-8b-instruct"),
+            api_key=nim_api_key or "nim-local",
+            async_client=nim_async_client,
         )
     kernel.add_service(ai_service)
 
